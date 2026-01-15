@@ -1165,11 +1165,13 @@ version = "0.1.0"
 dependencies = [
  "beetswap",
  "blockstore",
+ "cid",
  "clap",
  "color-eyre",
  "directories",
  "libp2p",
  "rand 0.8.5",
+ "redb",
  "serde",
  "serde_json",
  "tokio",

@@ -1,16 +1,18 @@
 use crate::{
     config::{Config, PeerType},
-    consts::{APPLICATION, BOOTNODES, BOOTSTRAP_ADDR, ORGANIZATION, QUALIFIER},
+    consts::{APPLICATION, BLOCKS_TABLE, BOOTNODES, BOOTSTRAP_ADDR, ORGANIZATION, QUALIFIER},
     swarm::{Behaviour, State},
 };
 use blockstore::RedbBlockstore;
+use cid::Cid;
 use color_eyre::eyre::anyhow;
 use directories::ProjectDirs;
 use libp2p::{
     PeerId, Swarm, SwarmBuilder,
     identity::{Keypair, ed25519},
-    noise, tcp, yamux,
+    kad, noise, tcp, yamux,
 };
+use redb::{ReadableTable, TableError};
 use std::{sync::Arc, time::Duration};
 use tokio::{
     fs::{self, File},
@@ -99,6 +101,29 @@ pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swa
             .behaviour_mut()
             .kad
             .add_address(&id, BOOTSTRAP_ADDR.parse().unwrap());
+    }
+
+    {
+        let read_tx = blockstore.raw_db().begin_read()?;
+
+        match read_tx.open_table(BLOCKS_TABLE) {
+            Ok(table) => {
+                for entry in table.iter()? {
+                    let cid_bytes = entry?.0;
+
+                    let cid = Cid::read_bytes(cid_bytes.value())?;
+
+                    swarm
+                        .behaviour_mut()
+                        .kad
+                        .start_providing(kad::RecordKey::new(&cid.hash().to_bytes()))?;
+                }
+            }
+            Err(TableError::TableDoesNotExist(_)) => {
+                // No error, its just an empty blockstore!
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
 
     let mut state = State::new();
