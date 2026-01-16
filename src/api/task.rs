@@ -1,6 +1,6 @@
-use std::net::SocketAddr;
 use super::routes;
 use crate::config::CONFIG;
+use std::net::SocketAddr;
 use tokio::{net::TcpListener, select};
 use tokio_util::sync::CancellationToken;
 

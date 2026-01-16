@@ -1,4 +1,4 @@
-use clap::{Subcommand, Parser};
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = env!("CARGO_PKG_NAME"))]
@@ -11,11 +11,11 @@ pub struct Cli {
     pub logging: String,
 
     #[clap(subcommand)]
-    pub cmd: Command
+    pub cmd: Command,
 }
 
 #[derive(Subcommand, Clone)]
 pub enum Command {
     /// Start goop daemon
-    Daemon
+    Daemon,
 }

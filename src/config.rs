@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::{fs, sync::OnceCell, task};
 
-pub static CONFIG: OnceCell<Config> = OnceCell::const_new(); 
+pub static CONFIG: OnceCell<Config> = OnceCell::const_new();
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
@@ -15,6 +15,7 @@ pub struct Config {
     pub api_address: SocketAddr,
     pub listen_addresses: Vec<Multiaddr>,
     pub external_addresses: Vec<Multiaddr>,
+    pub max_cache_size: usize,
     pub peers: Vec<PeerType>,
 }
 
@@ -47,6 +48,8 @@ impl Default for Config {
                 "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt/p2p-circuit".parse().unwrap(),
             ],
             external_addresses: Vec::new(),
+            // 10 GB
+            max_cache_size: 10 * 1024 * 1024 * 1024,
             peers: Vec::new(),
         }
     }

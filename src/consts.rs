@@ -14,3 +14,6 @@ pub const BOOTSTRAP_ADDR: &str = "/dnsaddr/bootstrap.libp2p.io";
 
 pub const BLOCKS_TABLE: TableDefinition<'static, &[u8], &[u8]> =
     TableDefinition::new("BLOCKSTORE.BLOCKS");
+
+pub const CACHE_TABLE: TableDefinition<'static, &[u8], u64> =
+    TableDefinition::new("BLOCKSTORE.CACHE");

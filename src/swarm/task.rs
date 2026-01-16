@@ -1,14 +1,39 @@
-use crate::swarm::{Behaviour, BehaviourEvent, State, init_swarm};
-use blockstore::RedbBlockstore;
+use crate::{
+    config::CONFIG,
+    consts::CACHE_TABLE,
+    swarm::{Behaviour, BehaviourEvent, State, init_swarm},
+};
+use blockstore::{Blockstore, RedbBlockstore};
 use libp2p::{Swarm, futures::StreamExt, identify, kad, mdns, swarm::SwarmEvent, upnp};
+use redb::{ReadableTable, TableError};
 use std::sync::Arc;
-use tokio::select;
+use tokio::{select, task};
 use tokio_util::sync::CancellationToken;
 
-pub async fn spawn(
-    cancel: CancellationToken,
-) -> color_eyre::Result<()> {
+pub async fn spawn(cancel: CancellationToken) -> color_eyre::Result<()> {
     let (blockstore, mut state, mut swarm) = init_swarm().await?;
+
+    let mut cache_size = 0;
+
+    {
+        let read_tx = blockstore.raw_db().begin_read()?;
+
+        match read_tx.open_table(CACHE_TABLE) {
+            Ok(table) => {
+                for entry in table.iter()? {
+                    let (_, size) = entry?;
+
+                    cache_size += size.value();
+                }
+            }
+            Err(TableError::TableDoesNotExist(_)) => {
+                // No actual error!
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    state.cache_size = cache_size as usize;
 
     tracing::info!("initialized swarm");
 
@@ -92,15 +117,23 @@ async fn handle_event(
                 if let Some(peer) = state.remove_peer_query(&id) {
                     for peer_info in p.peers {
                         if peer_info.peer_id == peer {
-                            for addr in peer_info.addrs {
-                                if let Err(e) = swarm.dial(addr.clone()) {
-                                    tracing::debug!(
-                                        "error dialing peer {}'s addr {}, {}",
-                                        peer,
-                                        addr,
-                                        e
-                                    );
+                            if !swarm.is_connected(&peer_info.peer_id) {
+                                for addr in peer_info.addrs {
+                                    if let Err(e) = swarm.dial(addr.clone()) {
+                                        tracing::debug!(
+                                            "error dialing peer {}'s addr {}, {}",
+                                            peer,
+                                            addr,
+                                            e
+                                        );
+                                    }
                                 }
+                            }
+
+                            if let Some(cid) = state.remove_cid_query(&id) {
+                                let b_id = swarm.behaviour_mut().bitswap.get(&cid);
+
+                                state.add_block_query(b_id, cid);
                             }
                         }
                     }
@@ -119,8 +152,84 @@ async fn handle_event(
                 );
             }
             kad::QueryResult::Bootstrap(Err(e)) => tracing::warn!("bootstrap error: {:?}", e),
+            kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders {
+                providers,
+                ..
+            })) => {
+                for peer in providers {
+                    if swarm.is_connected(&peer)
+                        && let Some(cid) = if step.last {
+                            state.remove_cid_query(&id)
+                        } else {
+                            state.get_cid_for_id(&id)
+                        }
+                    {
+                        let b_id = swarm.behaviour_mut().bitswap.get(&cid);
+
+                        state.add_block_query(b_id, cid);
+                    } else if !state.is_searching_for_peer(peer)
+                        && let Some(cid) = state.get_cid_for_id(&id)
+                    {
+                        let q_id = swarm.behaviour_mut().kad.get_closest_peers(peer);
+
+                        state.add_peer_query(q_id, peer);
+                        state.add_cid_query(q_id, cid);
+                    }
+                }
+            }
+            kad::QueryResult::GetProviders(Ok(
+                kad::GetProvidersOk::FinishedWithNoAdditionalRecord { .. },
+            )) => {
+                if let Some(cid) = state.remove_cid_query(&id) {
+                    tracing::debug!("no providers found for cid {}", cid);
+                }
+            }
+            kad::QueryResult::GetProviders(Err(e)) => {
+                if let Some(cid) = state.remove_cid_query(&id) {
+                    tracing::debug!("error getting providers for cid {}, {}", cid, e);
+                }
+            }
             res => tracing::debug!("kad result: {:?}", res),
         },
+        SwarmEvent::Behaviour(BehaviourEvent::Bitswap(beetswap::Event::GetQueryResponse {
+            query_id,
+            data,
+        })) => {
+            if let Some(cid) = state.remove_block_query(&query_id) {
+                tracing::debug!("got data for cid {}", cid);
+
+                if state.cache_size + data.len() < CONFIG.get().unwrap().max_cache_size {
+                    blockstore.put_keyed(&cid, &data).await?;
+
+                    state.cache_size += data.len();
+
+                    let db = blockstore.raw_db();
+                    task::spawn_blocking(move || {
+                        let write_tx = db.begin_write()?;
+
+                        {
+                            let mut table = write_tx.open_table(CACHE_TABLE)?;
+
+                            table.insert(cid.to_bytes().as_slice(), data.len() as u64)?;
+                        }
+
+                        write_tx.commit()?;
+
+                        Result::<(), redb::Error>::Ok(())
+                    });
+                }
+
+                // TODO process data
+            }
+        }
+        SwarmEvent::Behaviour(BehaviourEvent::Bitswap(beetswap::Event::GetQueryError {
+            query_id,
+            error,
+        })) => {
+            if let Some(cid) = state.remove_block_query(&query_id) {
+                tracing::debug!("failed to get cid {}, {}", cid, error);
+            }
+        }
         ev => tracing::trace!("swarm event: {:?}", ev),
     }
 

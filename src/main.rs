@@ -3,10 +3,10 @@ mod consts;
 mod swarm;
 
 mod config;
-use config::{Config, CONFIG};
+use config::{CONFIG, Config};
 
 mod cli;
-use cli::{Command, Cli};
+use cli::{Cli, Command};
 
 use clap::Parser;
 use tokio::{select, signal, task};
@@ -36,8 +36,7 @@ async fn main() -> color_eyre::Result<()> {
             let token = CancellationToken::new();
 
             let exit = signal::ctrl_c();
-            let swarm_task =
-                task::spawn(swarm::spawn(token.child_token()));
+            let swarm_task = task::spawn(swarm::spawn(token.child_token()));
             let api_task = task::spawn(api::spawn(token.child_token()));
 
             tracing::info!("started daemon, press ctrl+c to exit...");
