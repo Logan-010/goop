@@ -6,10 +6,12 @@ use crate::{
 use blockstore::RedbBlockstore;
 use cid::Cid;
 use libp2p::{
-    PeerId, Swarm, SwarmBuilder,
+    PeerId, Swarm, SwarmBuilder, Transport,
+    core::muxing::StreamMuxerBox,
     identity::{Keypair, ed25519},
     kad, noise, tcp, yamux,
 };
+use libp2p_webrtc::{self as webrtc, tokio::Certificate};
 use redb::{ReadableTable, TableError};
 use std::{sync::Arc, time::Duration};
 use tokio::fs;
@@ -21,6 +23,12 @@ pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swa
         let mut content = fs::read(&config.identity_path).await?;
 
         Keypair::from(ed25519::Keypair::try_from_bytes(&mut content)?)
+    };
+
+    let certificate = {
+        let content = fs::read_to_string(&config.webrtc_cert_path).await?;
+
+        Certificate::from_pem(&content)?
     };
 
     tracing::info!("loaded identity {}", keypair.public().to_peer_id());
@@ -39,6 +47,10 @@ pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swa
             yamux::Config::default,
         )?
         .with_quic()
+        .with_other_transport(|key| {
+            webrtc::tokio::Transport::new(key.clone(), certificate)
+                .map(|(peer_id, conn), _| (peer_id, StreamMuxerBox::new(conn)))
+        })?
         .with_dns()?
         .with_websocket(noise::Config::new, yamux::Config::default)
         .await?
