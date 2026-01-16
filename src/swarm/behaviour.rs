@@ -38,13 +38,7 @@ impl Behaviour {
                 autonat::v2::client::Config::default(),
             ),
             dcutr: dcutr::Behaviour::new(key.public().to_peer_id()),
-            mdns: mdns::tokio::Behaviour::new(
-                mdns::Config {
-                    enable_ipv6: true,
-                    ..Default::default()
-                },
-                key.public().to_peer_id(),
-            )?,
+            mdns: mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())?,
             upnp: upnp::tokio::Behaviour::default(),
             kad: kad::Behaviour::with_config(
                 key.public().to_peer_id(),
