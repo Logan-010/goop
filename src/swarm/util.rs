@@ -46,7 +46,7 @@ pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swa
             .map_err(|_| anyhow!("failed to transmute file type into std"))?;
 
         let c = config.clone();
-        task::spawn_blocking(move || serde_json::to_writer(file, &c)).await??;
+        task::spawn_blocking(move || serde_json::to_writer_pretty(file, &c)).await??;
 
         config
     };

@@ -30,14 +30,14 @@ async fn handle_event(
     swarm: &mut Swarm<Behaviour>,
 ) -> color_eyre::Result<()> {
     match event {
-        SwarmEvent::NewListenAddr { address, .. } => tracing::trace!("listening on {}", address),
+        SwarmEvent::NewListenAddr { address, .. } => tracing::debug!("listening on {}", address),
         SwarmEvent::Behaviour(BehaviourEvent::Autonat(ev)) => match ev.result {
             Ok(_) => {
                 tracing::info!("confirmed external addr {}", ev.tested_addr);
 
                 swarm.add_external_address(ev.tested_addr);
             }
-            Err(e) => tracing::warn!(
+            Err(e) => tracing::debug!(
                 "autonat tested addr {} and failed with {}",
                 ev.tested_addr,
                 e
@@ -45,7 +45,7 @@ async fn handle_event(
         },
         SwarmEvent::Behaviour(BehaviourEvent::Dcutr(ev)) => {
             if let Err(e) = ev.result {
-                tracing::trace!(
+                tracing::debug!(
                     "failed to hole punch remote connection to {}, error {}",
                     ev.remote_peer_id,
                     e
@@ -67,7 +67,7 @@ async fn handle_event(
             info: identify::Info { listen_addrs, .. },
             ..
         })) => {
-            tracing::debug!("connected to {}", peer_id);
+            tracing::trace!("connected to {}", peer_id);
 
             for addr in listen_addrs {
                 swarm.behaviour_mut().kad.add_address(&peer_id, addr);
@@ -93,7 +93,7 @@ async fn handle_event(
                         if peer_info.peer_id == peer {
                             for addr in peer_info.addrs {
                                 if let Err(e) = swarm.dial(addr.clone()) {
-                                    tracing::trace!(
+                                    tracing::debug!(
                                         "error dialing peer {}'s addr {}, {}",
                                         peer,
                                         addr,
@@ -110,9 +110,17 @@ async fn handle_event(
                     tracing::warn!("failed to get peer {}, {}", peer, e);
                 }
             }
-            res => tracing::trace!("kad result: {:?}", res),
+            kad::QueryResult::Bootstrap(Ok(bootstrap)) => {
+                tracing::debug!(
+                    "bootstrap finished with {}, {} remaining",
+                    bootstrap.peer,
+                    bootstrap.num_remaining
+                );
+            }
+            kad::QueryResult::Bootstrap(Err(e)) => tracing::warn!("bootstrap error: {:?}", e),
+            res => tracing::debug!("kad result: {:?}", res),
         },
-        ev => tracing::debug!("swarm event: {:?}", ev),
+        ev => tracing::trace!("swarm event: {:?}", ev),
     }
 
     Ok(())
