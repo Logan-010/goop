@@ -1,11 +1,10 @@
 use crate::{
-    config::{Config, PeerType},
-    consts::{APPLICATION, BLOCKS_TABLE, BOOTNODES, BOOTSTRAP_ADDR, ORGANIZATION, QUALIFIER},
+    config::{CONFIG, PeerType},
+    consts::{BLOCKS_TABLE, BOOTNODES, BOOTSTRAP_ADDR},
     swarm::{Behaviour, State},
 };
 use blockstore::RedbBlockstore;
 use cid::Cid;
-use directories::ProjectDirs;
 use libp2p::{
     PeerId, Swarm, SwarmBuilder,
     identity::{Keypair, ed25519},
@@ -13,58 +12,22 @@ use libp2p::{
 };
 use redb::{ReadableTable, TableError};
 use std::{sync::Arc, time::Duration};
-use tokio::{fs, task};
+use tokio::fs;
 
 pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swarm<Behaviour>)> {
-    let dirs = ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
-        .expect("failed to access goop directories");
-    let config_path = dirs.data_dir().join("config.toml");
+    let config = CONFIG.get().unwrap();
 
-    let config = if config_path.exists() {
-        let content = fs::read_to_string(config_path).await?;
+    let keypair = {
+        let mut content = fs::read(&config.identity_path).await?;
 
-        let config: Config = task::spawn_blocking(move || toml::from_str(&content)).await??;
-
-        config
-    } else {
-        let config = Config::default();
-
-        if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent).await?;
-        }
-
-        let c = config.clone();
-        let content = task::spawn_blocking(move || toml::to_string_pretty(&c)).await??;
-
-        fs::write(config_path, content).await?;
-
-        config
+        Keypair::from(ed25519::Keypair::try_from_bytes(&mut content)?)
     };
 
-    let keypair = if config.identity_path.exists() {
-        let mut key_bytes = fs::read(&config.identity_path).await?;
-
-        Keypair::from(ed25519::Keypair::try_from_bytes(&mut key_bytes)?)
-    } else {
-        let key = ed25519::Keypair::generate();
-
-        fs::write(&config.identity_path, key.to_bytes()).await?;
-
-        Keypair::from(key)
-    };
-
-    tracing::info!(
-        "loaded identity {} from {}",
-        keypair.public().to_peer_id(),
-        config.identity_path.display()
-    );
+    tracing::info!("loaded identity {}", keypair.public().to_peer_id());
 
     let redb = RedbBlockstore::open(&config.blockstore_path).await?;
 
-    tracing::info!(
-        "loaded blockstore from {}",
-        config.blockstore_path.display()
-    );
+    tracing::info!("loaded blockstore");
 
     let blockstore = Arc::new(redb);
 
@@ -118,19 +81,19 @@ pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swa
 
     let mut state = State::new();
 
-    for addr in config.listen_addresses {
+    for addr in config.listen_addresses.clone() {
         swarm.listen_on(addr.clone())?;
 
         tracing::info!("listening on {}", addr);
     }
 
-    for external_addr in config.external_addresses {
+    for external_addr in config.external_addresses.clone() {
         swarm.add_external_address(external_addr.clone());
 
         tracing::info!("swarm reachable at external addr {}", external_addr);
     }
 
-    for peer in config.peers {
+    for peer in config.peers.clone() {
         match peer {
             PeerType::Direct(ma) => {
                 swarm.dial(ma)?;

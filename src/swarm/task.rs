@@ -1,4 +1,4 @@
-use crate::swarm::{Behaviour, BehaviourEvent, State};
+use crate::swarm::{Behaviour, BehaviourEvent, State, init_swarm};
 use blockstore::RedbBlockstore;
 use libp2p::{Swarm, futures::StreamExt, identify, kad, mdns, swarm::SwarmEvent, upnp};
 use std::sync::Arc;
@@ -7,10 +7,11 @@ use tokio_util::sync::CancellationToken;
 
 pub async fn spawn(
     cancel: CancellationToken,
-    blockstore: Arc<RedbBlockstore>,
-    mut state: State,
-    mut swarm: Swarm<Behaviour>,
 ) -> color_eyre::Result<()> {
+    let (blockstore, mut state, mut swarm) = init_swarm().await?;
+
+    tracing::info!("initialized swarm");
+
     loop {
         select! {
             _ = cancel.cancelled() => break,

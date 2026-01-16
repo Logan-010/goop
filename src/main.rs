@@ -1,10 +1,12 @@
 mod api;
-mod config;
 mod consts;
 mod swarm;
 
+mod config;
+use config::{Config, CONFIG};
+
 mod cli;
-use cli::Cli;
+use cli::{Command, Cli};
 
 use clap::Parser;
 use tokio::{select, signal, task};
@@ -26,25 +28,31 @@ async fn main() -> color_eyre::Result<()> {
         eprintln!("failed to initialize logger");
     }
 
-    let (blockstore, state, swarm) = swarm::init_swarm().await?;
+    let config = Config::new().await?;
+    CONFIG.set(config)?;
 
-    tracing::info!("initialized swarm");
+    match cli.cmd {
+        Command::Daemon => {
+            let token = CancellationToken::new();
 
-    let token = CancellationToken::new();
+            let exit = signal::ctrl_c();
+            let swarm_task =
+                task::spawn(swarm::spawn(token.child_token()));
+            let api_task = task::spawn(api::spawn(token.child_token()));
 
-    let exit = signal::ctrl_c();
-    let swarm_task = task::spawn(swarm::spawn(token.child_token(), blockstore, state, swarm));
+            tracing::info!("started daemon, press ctrl+c to exit...");
 
-    tracing::info!("started daemon, press ctrl+c to exit...");
+            select! {
+                exit_res = exit => exit_res?,
+                swarm_res = swarm_task => swarm_res??,
+                api_res = api_task => api_res??
+            }
 
-    select! {
-        exit_res = exit => exit_res?,
-        swarm_res = swarm_task => swarm_res??
+            tracing::info!("quitting, press ctrl+c again to exit immediately...");
+
+            token.cancel();
+        }
     }
-
-    tracing::info!("quitting, press ctrl+c again to exit immediately...");
-
-    token.cancel();
 
     Ok(())
 }
