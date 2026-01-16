@@ -5,7 +5,6 @@ use crate::{
 };
 use blockstore::RedbBlockstore;
 use cid::Cid;
-use color_eyre::eyre::anyhow;
 use directories::ProjectDirs;
 use libp2p::{
     PeerId, Swarm, SwarmBuilder,
@@ -14,23 +13,17 @@ use libp2p::{
 };
 use redb::{ReadableTable, TableError};
 use std::{sync::Arc, time::Duration};
-use tokio::{
-    fs::{self, File},
-    task,
-};
+use tokio::{fs, task};
 
 pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swarm<Behaviour>)> {
     let dirs = ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
         .expect("failed to access goop directories");
-    let config_path = dirs.data_dir().join("config.json");
+    let config_path = dirs.data_dir().join("config.toml");
 
     let config = if config_path.exists() {
-        let file = File::open(config_path)
-            .await?
-            .try_into_std()
-            .map_err(|_| anyhow!("failed to transmute file type into std"))?;
+        let content = fs::read_to_string(config_path).await?;
 
-        let config: Config = task::spawn_blocking(move || serde_json::from_reader(file)).await??;
+        let config: Config = task::spawn_blocking(move || toml::from_str(&content)).await??;
 
         config
     } else {
@@ -40,13 +33,10 @@ pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swa
             fs::create_dir_all(parent).await?;
         }
 
-        let file = File::create_new(config_path)
-            .await?
-            .try_into_std()
-            .map_err(|_| anyhow!("failed to transmute file type into std"))?;
-
         let c = config.clone();
-        task::spawn_blocking(move || serde_json::to_writer_pretty(file, &c)).await??;
+        let content = task::spawn_blocking(move || toml::to_string_pretty(&c)).await??;
+
+        fs::write(config_path, content).await?;
 
         config
     };
