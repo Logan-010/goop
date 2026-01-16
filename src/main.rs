@@ -9,7 +9,7 @@ mod cli;
 use cli::{Cli, Command};
 
 use clap::Parser;
-use tokio::{select, signal, task};
+use tokio::{select, signal, sync::mpsc, task};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -35,9 +35,11 @@ async fn main() -> color_eyre::Result<()> {
         Command::Daemon => {
             let token = CancellationToken::new();
 
+            let (tx, rx) = mpsc::unbounded_channel();
+
             let exit = signal::ctrl_c();
-            let swarm_task = task::spawn(swarm::spawn(token.child_token()));
-            let api_task = task::spawn(api::spawn(token.child_token()));
+            let swarm_task = task::spawn(swarm::spawn(token.child_token(), rx));
+            let api_task = task::spawn(api::spawn(token.child_token(), tx));
 
             tracing::info!("started daemon, press ctrl+c to exit...");
 

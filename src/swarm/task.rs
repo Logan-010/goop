@@ -1,16 +1,20 @@
 use crate::{
     config::CONFIG,
     consts::CACHE_TABLE,
-    swarm::{Behaviour, BehaviourEvent, State, init_swarm},
+    swarm::{Behaviour, BehaviourEvent, RequestType, Response, State, init_swarm, types::Request},
 };
 use blockstore::{Blockstore, RedbBlockstore};
+use color_eyre::eyre::ContextCompat;
 use libp2p::{Swarm, futures::StreamExt, identify, kad, mdns, swarm::SwarmEvent, upnp};
 use redb::{ReadableTable, TableError};
 use std::sync::Arc;
-use tokio::{select, task};
+use tokio::{select, sync::mpsc, task};
 use tokio_util::sync::CancellationToken;
 
-pub async fn spawn(cancel: CancellationToken) -> color_eyre::Result<()> {
+pub async fn spawn(
+    cancel: CancellationToken,
+    mut requests: mpsc::UnboundedReceiver<Request>,
+) -> color_eyre::Result<()> {
     let (blockstore, mut state, mut swarm) = init_swarm().await?;
 
     let mut cache_size = 0;
@@ -40,8 +44,46 @@ pub async fn spawn(cancel: CancellationToken) -> color_eyre::Result<()> {
     loop {
         select! {
             _ = cancel.cancelled() => break,
+            req = requests.recv() => match req {
+                Some(request) => if let Err(e) = handle_request(request, &blockstore, &mut state, &mut swarm, &cancel).await {
+                tracing::warn!("request error: {}", e);
+            },
+                None => tracing::error!("request channel closed"),
+            },
             event = swarm.select_next_some() => if let Err(e) = handle_event(event, &blockstore, &mut state, &mut swarm, &cancel).await {
                 tracing::warn!("event error: {}", e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_request(
+    request: Request,
+    blockstore: &Arc<RedbBlockstore>,
+    state: &mut State,
+    swarm: &mut Swarm<Behaviour>,
+    token: &CancellationToken,
+) -> color_eyre::Result<()> {
+    match request.message {
+        RequestType::GetCid(cid) => {
+            if blockstore.has(&cid).await? {
+                let content = blockstore
+                    .get(&cid)
+                    .await?
+                    .context("blockstore responded with no content")?;
+
+                request.send_response(Response::Cid(content));
+            } else {
+                let id = swarm
+                    .behaviour_mut()
+                    .kad
+                    .get_providers(kad::RecordKey::new(&cid.hash().to_bytes().as_slice()));
+
+                state.add_cid_query(id, cid);
+
+                state.add_get_cid(cid, request.response_channel);
             }
         }
     }
@@ -199,13 +241,16 @@ async fn handle_event(
             if let Some(cid) = state.remove_block_query(&query_id) {
                 tracing::debug!("got data for cid {}", cid);
 
-                if state.cache_size + data.len() < CONFIG.get().unwrap().max_cache_size {
+                if state.cache_size + data.len() < CONFIG.get().unwrap().max_cache_size
+                    && !blockstore.has(&cid).await?
+                {
                     blockstore.put_keyed(&cid, &data).await?;
 
                     state.cache_size += data.len();
 
                     let db = blockstore.raw_db();
                     let t = token.child_token();
+                    let l = data.len();
                     task::spawn_blocking(move || {
                         if t.is_cancelled() {
                             return Ok(());
@@ -220,7 +265,7 @@ async fn handle_event(
                         {
                             let mut table = write_tx.open_table(CACHE_TABLE)?;
 
-                            table.insert(cid.to_bytes().as_slice(), data.len() as u64)?;
+                            table.insert(cid.to_bytes().as_slice(), l as u64)?;
                         }
 
                         if t.is_cancelled() {
@@ -233,7 +278,11 @@ async fn handle_event(
                     });
                 }
 
-                // TODO process data
+                if let Some(response_channel) = state.remove_get_cid(&cid)
+                    && response_channel.send(Response::Cid(data)).is_err()
+                {
+                    tracing::warn!("failed to send response");
+                }
             }
         }
         SwarmEvent::Behaviour(BehaviourEvent::Bitswap(beetswap::Event::GetQueryError {
@@ -242,6 +291,14 @@ async fn handle_event(
         })) => {
             if let Some(cid) = state.remove_block_query(&query_id) {
                 tracing::debug!("failed to get cid {}, {}", cid, error);
+
+                if let Some(response_channel) = state.remove_get_cid(&cid)
+                    && response_channel
+                        .send(Response::Error(error.to_string()))
+                        .is_err()
+                {
+                    tracing::warn!("failed to send response");
+                }
             }
         }
         ev => tracing::trace!("swarm event: {:?}", ev),

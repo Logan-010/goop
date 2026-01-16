@@ -1,13 +1,15 @@
+use crate::swarm::Response;
 use cid::Cid;
 use libp2p::{PeerId, kad};
 use std::collections::HashMap;
+use tokio::sync::oneshot;
 
-#[derive(Debug)]
 pub struct State {
     pub cache_size: usize,
     peer_queries: HashMap<kad::QueryId, PeerId>,
     cid_provider_queries: HashMap<kad::QueryId, Cid>,
     block_queries: HashMap<beetswap::QueryId, Cid>,
+    get_cids: HashMap<Cid, oneshot::Sender<Response>>,
 }
 
 impl State {
@@ -17,6 +19,7 @@ impl State {
             peer_queries: HashMap::new(),
             cid_provider_queries: HashMap::new(),
             block_queries: HashMap::new(),
+            get_cids: HashMap::new(),
         }
     }
 
@@ -50,5 +53,13 @@ impl State {
 
     pub fn remove_block_query(&mut self, id: &beetswap::QueryId) -> Option<Cid> {
         self.block_queries.remove(id)
+    }
+
+    pub fn add_get_cid(&mut self, cid: Cid, tx: oneshot::Sender<Response>) {
+        self.get_cids.insert(cid, tx);
+    }
+
+    pub fn remove_get_cid(&mut self, cid: &Cid) -> Option<oneshot::Sender<Response>> {
+        self.get_cids.remove(cid)
     }
 }
