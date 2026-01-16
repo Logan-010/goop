@@ -40,7 +40,7 @@ pub async fn spawn(cancel: CancellationToken) -> color_eyre::Result<()> {
     loop {
         select! {
             _ = cancel.cancelled() => break,
-            event = swarm.select_next_some() => if let Err(e) = handle_event(event, &blockstore, &mut state, &mut swarm).await {
+            event = swarm.select_next_some() => if let Err(e) = handle_event(event, &blockstore, &mut state, &mut swarm, &cancel).await {
                 tracing::warn!("event error: {}", e);
             }
         }
@@ -54,6 +54,7 @@ async fn handle_event(
     blockstore: &Arc<RedbBlockstore>,
     state: &mut State,
     swarm: &mut Swarm<Behaviour>,
+    token: &CancellationToken,
 ) -> color_eyre::Result<()> {
     match event {
         SwarmEvent::NewListenAddr { address, .. } => tracing::debug!("listening on {}", address),
@@ -204,13 +205,26 @@ async fn handle_event(
                     state.cache_size += data.len();
 
                     let db = blockstore.raw_db();
+                    let t = token.child_token();
                     task::spawn_blocking(move || {
+                        if t.is_cancelled() {
+                            return Ok(());
+                        }
+
                         let write_tx = db.begin_write()?;
+
+                        if t.is_cancelled() {
+                            return Ok(());
+                        }
 
                         {
                             let mut table = write_tx.open_table(CACHE_TABLE)?;
 
                             table.insert(cid.to_bytes().as_slice(), data.len() as u64)?;
+                        }
+
+                        if t.is_cancelled() {
+                            return Ok(());
                         }
 
                         write_tx.commit()?;
