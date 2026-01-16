@@ -46,9 +46,11 @@ pub async fn spawn(
             _ = cancel.cancelled() => break,
             req = requests.recv() => match req {
                 Some(request) => if let Err(e) = handle_request(request, &blockstore, &mut state, &mut swarm, &cancel).await {
-                tracing::warn!("request error: {}", e);
-            },
-                None => tracing::error!("request channel closed"),
+                    tracing::warn!("request error: {}", e);
+                },
+                None => {
+                    tracing::error!("request channel closed"); break;
+                }
             },
             event = swarm.select_next_some() => if let Err(e) = handle_event(event, &blockstore, &mut state, &mut swarm, &cancel).await {
                 tracing::warn!("event error: {}", e);
@@ -66,6 +68,8 @@ async fn handle_request(
     swarm: &mut Swarm<Behaviour>,
     token: &CancellationToken,
 ) -> color_eyre::Result<()> {
+    tracing::debug!("got request: {:?}", request);
+
     match request.message {
         RequestType::GetCid(cid) => {
             if blockstore.has(&cid).await? {
@@ -106,7 +110,7 @@ async fn handle_event(
 
                 swarm.add_external_address(ev.tested_addr);
             }
-            Err(e) => tracing::debug!(
+            Err(e) => tracing::trace!(
                 "autonat tested addr {} and failed with {}",
                 ev.tested_addr,
                 e
@@ -158,27 +162,22 @@ async fn handle_event(
         })) => match result {
             kad::QueryResult::GetClosestPeers(Ok(p)) => {
                 if let Some(peer) = state.remove_peer_query(&id) {
-                    for peer_info in p.peers {
-                        if peer_info.peer_id == peer {
-                            if !swarm.is_connected(&peer_info.peer_id) {
-                                for addr in peer_info.addrs {
-                                    if let Err(e) = swarm.dial(addr.clone()) {
-                                        tracing::debug!(
-                                            "error dialing peer {}'s addr {}, {}",
-                                            peer,
-                                            addr,
-                                            e
-                                        );
-                                    }
-                                }
-                            }
+                    if p.peers.iter().any(|p| p.peer_id == peer) {
+                        tracing::debug!("found peer {} in dht", peer);
 
-                            if let Some(cid) = state.remove_cid_query(&id) {
-                                let b_id = swarm.behaviour_mut().bitswap.get(&cid);
-
-                                state.add_block_query(b_id, cid);
-                            }
+                        if !swarm.is_connected(&peer) {
+                            swarm.dial(peer)?;
                         }
+
+                        if let Some(cid) = state.remove_cid_query(&id) {
+                            tracing::debug!("getting cid {}", cid);
+
+                            let b_id = swarm.behaviour_mut().bitswap.get(&cid);
+
+                            state.add_block_query(b_id, cid);
+                        }
+                    } else {
+                        tracing::debug!("peer {} not found in dht", peer);
                     }
                 }
             }
@@ -199,6 +198,8 @@ async fn handle_event(
                 providers,
                 ..
             })) => {
+                tracing::debug!("found providers {:?}", providers);
+
                 for peer in providers {
                     if swarm.is_connected(&peer)
                         && let Some(cid) = if step.last {
@@ -258,18 +259,10 @@ async fn handle_event(
 
                         let write_tx = db.begin_write()?;
 
-                        if t.is_cancelled() {
-                            return Ok(());
-                        }
-
                         {
                             let mut table = write_tx.open_table(CACHE_TABLE)?;
 
                             table.insert(cid.to_bytes().as_slice(), l as u64)?;
-                        }
-
-                        if t.is_cancelled() {
-                            return Ok(());
                         }
 
                         write_tx.commit()?;

@@ -1447,6 +1447,7 @@ dependencies = [
  "libp2p",
  "libp2p-webrtc",
  "mime_guess",
+ "multihash-codetable",
  "rand 0.8.5",
  "redb",
  "rust-embed",

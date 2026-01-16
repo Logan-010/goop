@@ -1,6 +1,7 @@
 use cid::Cid;
 use tokio::sync::oneshot;
 
+#[derive(Debug)]
 pub struct Request {
     pub message: RequestType,
     pub response_channel: oneshot::Sender<Response>,
@@ -26,11 +27,13 @@ impl Request {
     }
 }
 
+#[derive(Debug)]
 pub enum RequestType {
     GetCid(Cid),
 }
 
 #[non_exhaustive]
+#[derive(Debug)]
 pub enum Response {
     Cid(Vec<u8>),
     Error(String),
