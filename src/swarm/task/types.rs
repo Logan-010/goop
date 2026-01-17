@@ -30,11 +30,13 @@ impl Request {
 #[derive(Debug)]
 pub enum RequestType {
     GetCid(Cid),
+    GetIpns(Cid),
 }
 
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Response {
     Cid(Vec<u8>),
+    Ipns { data: String, seq: u64 },
     Error(String),
 }

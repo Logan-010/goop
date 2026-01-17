@@ -1,101 +1,17 @@
 use crate::{
     config::CONFIG,
     consts::CACHE_TABLE,
-    swarm::{Behaviour, BehaviourEvent, RequestType, Response, State, init_swarm, types::Request},
+    swarm::{Behaviour, BehaviourEvent, State, task::Response},
 };
 use blockstore::{Blockstore, RedbBlockstore};
 use color_eyre::eyre::ContextCompat;
-use libp2p::{Swarm, futures::StreamExt, identify, kad, mdns, swarm::SwarmEvent, upnp};
-use redb::{ReadableTable, TableError};
+use libp2p::{Swarm, identify, identity::PublicKey, kad, mdns, swarm::SwarmEvent, upnp};
+use multihash::Multihash;
 use std::sync::Arc;
-use tokio::{select, sync::mpsc, task};
+use tokio::task;
 use tokio_util::sync::CancellationToken;
 
-pub async fn spawn(
-    cancel: CancellationToken,
-    mut requests: mpsc::UnboundedReceiver<Request>,
-) -> color_eyre::Result<()> {
-    let (blockstore, mut state, mut swarm) = init_swarm().await?;
-
-    let mut cache_size = 0;
-
-    {
-        let read_tx = blockstore.raw_db().begin_read()?;
-
-        match read_tx.open_table(CACHE_TABLE) {
-            Ok(table) => {
-                for entry in table.iter()? {
-                    let (_, size) = entry?;
-
-                    cache_size += size.value();
-                }
-            }
-            Err(TableError::TableDoesNotExist(_)) => {
-                // No actual error!
-            }
-            Err(e) => return Err(e.into()),
-        }
-    }
-
-    state.cache_size = cache_size as usize;
-
-    tracing::info!("initialized swarm");
-
-    loop {
-        select! {
-            _ = cancel.cancelled() => break,
-            req = requests.recv() => match req {
-                Some(request) => if let Err(e) = handle_request(request, &blockstore, &mut state, &mut swarm, &cancel).await {
-                    tracing::warn!("request error: {}", e);
-                },
-                None => {
-                    tracing::error!("request channel closed"); break;
-                }
-            },
-            event = swarm.select_next_some() => if let Err(e) = handle_event(event, &blockstore, &mut state, &mut swarm, &cancel).await {
-                tracing::warn!("event error: {}", e);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn handle_request(
-    request: Request,
-    blockstore: &Arc<RedbBlockstore>,
-    state: &mut State,
-    swarm: &mut Swarm<Behaviour>,
-    token: &CancellationToken,
-) -> color_eyre::Result<()> {
-    tracing::debug!("got request: {:?}", request);
-
-    match request.message {
-        RequestType::GetCid(cid) => {
-            if blockstore.has(&cid).await? {
-                let content = blockstore
-                    .get(&cid)
-                    .await?
-                    .context("blockstore responded with no content")?;
-
-                request.send_response(Response::Cid(content));
-            } else {
-                let id = swarm
-                    .behaviour_mut()
-                    .kad
-                    .get_providers(kad::RecordKey::new(&cid.hash().to_bytes().as_slice()));
-
-                state.add_cid_query(id, cid);
-
-                state.add_get_cid(cid, request.response_channel);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn handle_event(
+pub async fn handle_event(
     event: SwarmEvent<BehaviourEvent>,
     blockstore: &Arc<RedbBlockstore>,
     state: &mut State,
@@ -160,6 +76,91 @@ async fn handle_event(
             step,
             ..
         })) => match result {
+            kad::QueryResult::StartProviding(Ok(v)) => {
+                tracing::debug!("started providing {:?}", v.key)
+            }
+            kad::QueryResult::StartProviding(Err(e)) => {
+                tracing::warn!("error providing {:?}", e);
+            }
+            kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(kad::PeerRecord {
+                record,
+                ..
+            }))) => {
+                if let Some(response_channel) = state.remove_ipns_query(&id) {
+                    let ipns_record = rust_ipns::Record::decode(record.value)?;
+
+                    let key = record.key.to_vec();
+
+                    let mh_bytes = key.strip_prefix(b"/ipns/").context("invalid record key")?;
+
+                    let Ok(mh) = Multihash::<64>::from_bytes(mh_bytes) else {
+                        if response_channel
+                            .send(Response::Error("invalid mh bytes".into()))
+                            .is_err()
+                        {
+                            tracing::warn!("failed to send response");
+                        }
+
+                        return Ok(());
+                    };
+
+                    if mh.code() != 0x00 {
+                        if response_channel
+                            .send(Response::Error("unsupported record key".into()))
+                            .is_err()
+                        {
+                            tracing::warn!("failed to send response");
+                        }
+                    } else {
+                        let pk = PublicKey::try_decode_protobuf(mh.digest())?;
+
+                        ipns_record.verify(pk.to_peer_id())?;
+
+                        let ipns_data = ipns_record.data()?;
+
+                        let Ok(data) = String::from_utf8(ipns_data.value().to_vec()) else {
+                            if response_channel
+                                .send(Response::Error("invalid record data".into()))
+                                .is_err()
+                            {
+                                tracing::warn!("failed to send response");
+                            }
+
+                            return Ok(());
+                        };
+
+                        if response_channel
+                            .send(Response::Ipns {
+                                data,
+                                seq: ipns_data.sequence(),
+                            })
+                            .is_err()
+                        {
+                            tracing::warn!("failed to send response");
+                        }
+                    }
+                }
+            }
+            kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FinishedWithNoAdditionalRecord {
+                ..
+            })) => {
+                if let Some(response_channel) = state.remove_ipns_query(&id)
+                    && response_channel
+                        .send(Response::Error("no record found".into()))
+                        .is_err()
+                {
+                    tracing::warn!("failed to send response");
+                }
+            }
+            kad::QueryResult::GetRecord(Err(e)) => {
+                if let Some(response_channel) = state.remove_ipns_query(&id)
+                    && response_channel
+                        .send(Response::Error(e.to_string()))
+                        .is_err()
+                {
+                    tracing::warn!("failed to send response");
+                }
+            }
             kad::QueryResult::GetClosestPeers(Ok(p)) => {
                 if let Some(peer) = state.remove_peer_query(&id) {
                     if p.peers.iter().any(|p| p.peer_id == peer) {
@@ -248,6 +249,11 @@ async fn handle_event(
                     blockstore.put_keyed(&cid, &data).await?;
 
                     state.cache_size += data.len();
+
+                    swarm
+                        .behaviour_mut()
+                        .kad
+                        .start_providing(kad::RecordKey::new(&cid.hash().to_bytes().as_slice()))?;
 
                     let db = blockstore.raw_db();
                     let t = token.child_token();

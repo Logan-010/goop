@@ -1,4 +1,4 @@
-use crate::swarm::Response;
+use crate::swarm::task::Response;
 use cid::Cid;
 use libp2p::{PeerId, kad};
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ pub struct State {
     cid_provider_queries: HashMap<kad::QueryId, Cid>,
     block_queries: HashMap<beetswap::QueryId, Cid>,
     get_cids: HashMap<Cid, oneshot::Sender<Response>>,
+    ipns_queries: HashMap<kad::QueryId, oneshot::Sender<Response>>,
 }
 
 impl State {
@@ -20,6 +21,7 @@ impl State {
             cid_provider_queries: HashMap::new(),
             block_queries: HashMap::new(),
             get_cids: HashMap::new(),
+            ipns_queries: HashMap::new(),
         }
     }
 
@@ -61,5 +63,13 @@ impl State {
 
     pub fn remove_get_cid(&mut self, cid: &Cid) -> Option<oneshot::Sender<Response>> {
         self.get_cids.remove(cid)
+    }
+
+    pub fn add_ipns_query(&mut self, id: kad::QueryId, tx: oneshot::Sender<Response>) {
+        self.ipns_queries.insert(id, tx);
+    }
+
+    pub fn remove_ipns_query(&mut self, id: &kad::QueryId) -> Option<oneshot::Sender<Response>> {
+        self.ipns_queries.remove(id)
     }
 }

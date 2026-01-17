@@ -11,7 +11,4 @@ mod util;
 pub use util::init_swarm;
 
 mod task;
-pub use task::spawn;
-
-mod types;
-pub use types::*;
+pub use task::*;
