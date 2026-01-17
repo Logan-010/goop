@@ -9,19 +9,38 @@ description = "IPFS implementation in Rust."
 axum = { version = "0.8.8", features = ["http1", "tokio", "ws"] }
 beetswap = "0.5.0"
 blockstore = { version = "0.8.0", features = ["redb"] }
+bytes = "1.11.0"
 cid = "0.11.1"
 clap = { version = "4.5.54", features = ["derive", "env"] }
 color-eyre = "0.6.5"
 directories = "6.0.0"
-libp2p = { version = "0.56.0", features = ["dcutr", "relay", "tcp", "quic", "noise", "yamux", "tokio", "macros", "ping", "identify", "autonat", "kad", "websocket", "mdns", "dns", "serde", "upnp", "rsa"] }
+libp2p = { version = "0.56.0", features = ["dcutr", "relay", "tcp", "quic", "noise", "yamux", "tokio", "macros", "ping", "identify", "autonat", "kad", "websocket", "mdns", "dns", "serde", "upnp", "rsa", "ecdsa", "secp256k1"] }
 libp2p-webrtc = { version = "0.9.0-alpha.1", features = ["pem", "tokio"] }
 mime_guess = "2.0.5"
-multihash-codetable = { version = "0.1.4", features = ["sha1", "sha2", "sha3", "blake3", "blake2b", "blake2s", "ripemd", "strobe"] }
+multihash = "0.19.3"
+multihash-codetable = { version = "0.1.4", features = [
+  "sha1",
+  "sha2",
+  "sha3",
+  "blake3",
+  "blake2b",
+  "blake2s",
+  "ripemd",
+  "strobe",
+] }
 rand = "0.8.5"
 redb = "2.6.3"
 rust-embed = "8.11.0"
+rust-ipns = "0.7.0"
 serde = { version = "1.0.228", features = ["derive"] }
-tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros", "fs", "signal", "net"] }
+time = "0.3.45"
+tokio = { version = "1.49.0", features = [
+  "rt-multi-thread",
+  "macros",
+  "fs",
+  "signal",
+  "net",
+] }
 tokio-util = { version = "0.7.18", default-features = false }
 toml = "0.9.11"
 tower-http = { version = "0.6.8", features = ["compression-gzip", "trace"] }
