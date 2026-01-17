@@ -9,8 +9,13 @@ pub fn build_routes(requests: mpsc::UnboundedSender<Request>) -> Router {
         .nest(
             "/api",
             Router::new()
-                .route("/get-cid", post(cids::get_cid))
-                .route("/get-ipns", post(ipns::get_ipns)),
+                .nest("/cid", Router::new().route("/get", post(cids::get_cid)))
+                .nest(
+                    "/ipns",
+                    Router::new()
+                        .route("/get", post(ipns::get_ipns))
+                        .route("/set", post(ipns::set_ipns)),
+                ),
         )
         .fallback(frontend::static_files)
         .layer(TraceLayer::new_for_http())

@@ -16,7 +16,8 @@ use redb::{ReadableTable, TableError};
 use std::{sync::Arc, time::Duration};
 use tokio::fs;
 
-pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swarm<Behaviour>)> {
+pub async fn init_swarm()
+-> color_eyre::Result<(Keypair, Arc<RedbBlockstore>, State, Swarm<Behaviour>)> {
     let config = CONFIG.get().unwrap();
 
     let keypair = {
@@ -39,7 +40,7 @@ pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swa
 
     let blockstore = Arc::new(redb);
 
-    let mut swarm = SwarmBuilder::with_existing_identity(keypair)
+    let mut swarm = SwarmBuilder::with_existing_identity(keypair.clone())
         .with_tokio()
         .with_tcp(
             tcp::Config::new().nodelay(true),
@@ -118,5 +119,5 @@ pub async fn init_swarm() -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swa
         }
     }
 
-    Ok((blockstore, state, swarm))
+    Ok((keypair, blockstore, state, swarm))
 }

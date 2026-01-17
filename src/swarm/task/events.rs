@@ -4,6 +4,7 @@ use crate::{
     swarm::{Behaviour, BehaviourEvent, State, task::Response},
 };
 use blockstore::{Blockstore, RedbBlockstore};
+use cid::Cid;
 use color_eyre::eyre::ContextCompat;
 use libp2p::{Swarm, identify, identity::PublicKey, kad, mdns, swarm::SwarmEvent, upnp};
 use multihash::Multihash;
@@ -81,6 +82,44 @@ pub async fn handle_event(
             }
             kad::QueryResult::StartProviding(Err(e)) => {
                 tracing::warn!("error providing {:?}", e);
+            }
+            kad::QueryResult::PutRecord(Ok(p)) => {
+                if let Some(response_channel) = state.remove_ipns_query(&id) {
+                    let key = p.key.to_vec();
+
+                    let mh_bytes = key.strip_prefix(b"/ipns/").context("invalid record key")?;
+
+                    let Ok(mh) = Multihash::<64>::from_bytes(mh_bytes) else {
+                        if response_channel
+                            .send(Response::Error("invalid mh bytes".into()))
+                            .is_err()
+                        {
+                            tracing::warn!("failed to send response");
+                        }
+
+                        return Ok(());
+                    };
+
+                    let cid = Cid::new_v1(0x72, mh);
+
+                    if response_channel
+                        .send(Response::SetIpns {
+                            data: format!("/ipns/{}", cid),
+                        })
+                        .is_err()
+                    {
+                        tracing::warn!("failed to send response");
+                    }
+                }
+            }
+            kad::QueryResult::PutRecord(Err(e)) => {
+                if let Some(response_channel) = state.remove_ipns_query(&id)
+                    && response_channel
+                        .send(Response::Error(e.to_string()))
+                        .is_err()
+                {
+                    tracing::warn!("failed to send response");
+                }
             }
             kad::QueryResult::GetRecord(Ok(kad::GetRecordOk::FoundRecord(kad::PeerRecord {
                 record,

@@ -31,6 +31,7 @@ impl Request {
 pub enum RequestType {
     GetCid(Cid),
     GetIpns(Cid),
+    SetIpns { data: String, seq: u64 },
 }
 
 #[non_exhaustive]
@@ -38,5 +39,6 @@ pub enum RequestType {
 pub enum Response {
     Cid(Vec<u8>),
     Ipns { data: String, seq: u64 },
+    SetIpns { data: String },
     Error(String),
 }

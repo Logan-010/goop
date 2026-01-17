@@ -14,7 +14,7 @@ pub async fn spawn(
     cancel: CancellationToken,
     mut requests: mpsc::UnboundedReceiver<Request>,
 ) -> color_eyre::Result<()> {
-    let (blockstore, mut state, mut swarm) = init_swarm().await?;
+    let (keypair, blockstore, mut state, mut swarm) = init_swarm().await?;
 
     let mut cache_size = 0;
 
@@ -44,7 +44,7 @@ pub async fn spawn(
         select! {
             _ = cancel.cancelled() => break,
             req = requests.recv() => match req {
-                Some(request) => if let Err(e) = requests::handle_request(request, &blockstore, &mut state, &mut swarm, &cancel).await {
+                Some(request) => if let Err(e) = requests::handle_request(&keypair, request, &blockstore, &mut state, &mut swarm, &cancel).await {
                     tracing::warn!("request error: {}", e);
                 },
                 None => {
