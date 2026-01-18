@@ -60,6 +60,8 @@ pub async fn init_swarm()
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 
+    swarm.behaviour_mut().kad.set_mode(Some(kad::Mode::Server));
+
     for id_str in BOOTNODES {
         let id: PeerId = id_str.parse().unwrap();
 

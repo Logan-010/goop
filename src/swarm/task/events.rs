@@ -44,11 +44,13 @@ pub async fn handle_event(
         }
         SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
             for (peer, addr) in list {
+                tracing::debug!("discovered peer {} on LAN", peer);
                 swarm.behaviour_mut().kad.add_address(&peer, addr);
             }
         }
         SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
             for (peer, addr) in list {
+                tracing::debug!("peer {} on LAN expired", peer);
                 swarm.behaviour_mut().kad.remove_address(&peer, &addr);
             }
         }
@@ -209,14 +211,16 @@ pub async fn handle_event(
                             swarm.dial(peer)?;
                         }
 
-                        if let Some(cid) = state.remove_cid_query(&id) {
+                        if let Some(cid) = state.remove_cid_query(&id)
+                            && !state.is_getting_cid(cid)
+                        {
                             tracing::debug!("getting cid {}", cid);
 
                             let b_id = swarm.behaviour_mut().bitswap.get(&cid);
 
                             state.add_block_query(b_id, cid);
                         }
-                    } else {
+                    } else if step.last && !swarm.is_connected(&peer) {
                         tracing::debug!("peer {} not found in dht", peer);
                     }
                 }
@@ -321,6 +325,25 @@ pub async fn handle_event(
                 {
                     tracing::warn!("failed to send response");
                 }
+
+                state.block_queries.retain(|k, v| {
+                    if *v == cid {
+                        swarm.behaviour_mut().bitswap.cancel(*k);
+                        false
+                    } else {
+                        true
+                    }
+                });
+                state.cid_provider_queries.retain(|k, v| {
+                    if *v == cid {
+                        if let Some(mut query) = swarm.behaviour_mut().kad.query_mut(k) {
+                            query.finish();
+                        }
+                        false
+                    } else {
+                        true
+                    }
+                })
             }
         }
         SwarmEvent::Behaviour(BehaviourEvent::Bitswap(beetswap::Event::GetQueryError {

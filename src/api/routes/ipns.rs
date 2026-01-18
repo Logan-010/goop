@@ -88,7 +88,7 @@ pub async fn set_ipns(
 
     let seq = match res {
         Response::Ipns { seq, .. } => seq,
-        Response::Error(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
+        Response::Error(_) => 0,
         _ => unreachable!(),
     };
 

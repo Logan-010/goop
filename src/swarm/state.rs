@@ -7,8 +7,8 @@ use tokio::sync::oneshot;
 pub struct State {
     pub cache_size: usize,
     peer_queries: HashMap<kad::QueryId, PeerId>,
-    cid_provider_queries: HashMap<kad::QueryId, Cid>,
-    block_queries: HashMap<beetswap::QueryId, Cid>,
+    pub cid_provider_queries: HashMap<kad::QueryId, Cid>,
+    pub block_queries: HashMap<beetswap::QueryId, Cid>,
     get_cids: HashMap<Cid, oneshot::Sender<Response>>,
     ipns_queries: HashMap<kad::QueryId, oneshot::Sender<Response>>,
 }
@@ -39,6 +39,10 @@ impl State {
 
     pub fn add_cid_query(&mut self, id: kad::QueryId, cid: Cid) {
         self.cid_provider_queries.insert(id, cid);
+    }
+
+    pub fn is_getting_cid(&mut self, cid: Cid) -> bool {
+        self.block_queries.values().any(|c| *c == cid)
     }
 
     pub fn get_cid_for_id(&self, id: &kad::QueryId) -> Option<Cid> {
