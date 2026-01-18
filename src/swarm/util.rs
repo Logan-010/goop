@@ -1,30 +1,25 @@
 use crate::{
     config::{CONFIG, PeerType},
     consts::{BLOCKS_TABLE, BOOTNODES, BOOTSTRAP_ADDR},
+    keystore::Keystore,
     swarm::{Behaviour, State},
 };
 use blockstore::RedbBlockstore;
 use cid::Cid;
 use libp2p::{
-    PeerId, Swarm, SwarmBuilder, Transport,
-    core::muxing::StreamMuxerBox,
-    identity::{Keypair, ed25519},
-    kad, noise, tcp, yamux,
+    PeerId, Swarm, SwarmBuilder, Transport, core::muxing::StreamMuxerBox, kad, noise, tcp, yamux,
 };
 use libp2p_webrtc::{self as webrtc, tokio::Certificate};
 use redb::{ReadableTable, TableError};
 use std::{sync::Arc, time::Duration};
 use tokio::fs;
 
-pub async fn init_swarm()
--> color_eyre::Result<(Keypair, Arc<RedbBlockstore>, State, Swarm<Behaviour>)> {
+pub async fn init_swarm(
+    keystore: &Keystore,
+) -> color_eyre::Result<(Arc<RedbBlockstore>, State, Swarm<Behaviour>)> {
     let config = CONFIG.get().unwrap();
 
-    let keypair = {
-        let mut content = fs::read(&config.identity_path).await?;
-
-        Keypair::from(ed25519::Keypair::try_from_bytes(&mut content)?)
-    };
+    let keypair = keystore.get_or_init_key("self", None)?;
 
     let certificate = {
         let content = fs::read_to_string(&config.webrtc_cert_path).await?;
@@ -40,7 +35,7 @@ pub async fn init_swarm()
 
     let blockstore = Arc::new(redb);
 
-    let mut swarm = SwarmBuilder::with_existing_identity(keypair.clone())
+    let mut swarm = SwarmBuilder::with_existing_identity(keypair)
         .with_tokio()
         .with_tcp(
             tcp::Config::new().nodelay(true),
@@ -121,5 +116,5 @@ pub async fn init_swarm()
         }
     }
 
-    Ok((keypair, blockstore, state, swarm))
+    Ok((blockstore, state, swarm))
 }

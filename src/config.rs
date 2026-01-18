@@ -1,7 +1,7 @@
 use crate::consts::{APPLICATION, ORGANIZATION, QUALIFIER};
 use color_eyre::eyre::ContextCompat;
 use directories::ProjectDirs;
-use libp2p::{Multiaddr, PeerId, identity::ed25519};
+use libp2p::{Multiaddr, PeerId};
 use libp2p_webrtc::tokio::Certificate;
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf};
@@ -11,7 +11,7 @@ pub static CONFIG: OnceCell<Config> = OnceCell::const_new();
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
-    pub identity_path: PathBuf,
+    pub keystore_path: PathBuf,
     pub blockstore_path: PathBuf,
     pub api_address: SocketAddr,
     pub listen_addresses: Vec<Multiaddr>,
@@ -34,7 +34,7 @@ impl Default for Config {
         let base = dirs.data_dir().to_path_buf();
 
         Self {
-            identity_path: base.join("keypair.bin"),
+            keystore_path: base.join("keystore.redb"),
             blockstore_path: base.join("blockstore.redb"),
             api_address: "127.0.0.1:5001".parse().unwrap(),
             listen_addresses: vec![
@@ -88,12 +88,6 @@ impl Config {
 
             config
         };
-
-        if !config.identity_path.exists() {
-            let key = ed25519::Keypair::generate();
-
-            fs::write(&config.identity_path, key.to_bytes()).await?;
-        }
 
         if !config.webrtc_cert_path.exists() {
             let cert = Certificate::generate(&mut rand::thread_rng())?;

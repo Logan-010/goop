@@ -1,5 +1,6 @@
 mod api;
 mod consts;
+mod keystore;
 mod swarm;
 
 mod config;

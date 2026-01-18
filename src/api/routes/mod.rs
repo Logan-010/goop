@@ -6,3 +6,5 @@ mod frontend;
 mod cids;
 
 mod ipns;
+
+mod keys;

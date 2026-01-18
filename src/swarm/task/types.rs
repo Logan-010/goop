@@ -1,4 +1,6 @@
 use cid::Cid;
+use libp2p::PeerId;
+use std::collections::HashMap;
 use tokio::sync::oneshot;
 
 #[derive(Debug)]
@@ -29,14 +31,16 @@ impl Request {
 
 #[derive(Debug)]
 pub enum RequestType {
+    GetKeys,
     GetCid(Cid),
     GetIpns(Cid),
-    SetIpns { data: String, seq: u64 },
+    SetIpns { data: String, seq: u64, key: String },
 }
 
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Response {
+    Keys(HashMap<String, PeerId>),
     Cid(Vec<u8>),
     Ipns { data: String, seq: u64 },
     SetIpns { data: String },

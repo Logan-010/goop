@@ -55,6 +55,7 @@ pub async fn get_ipns(
 #[derive(Deserialize)]
 pub struct SetIpns {
     cid: String,
+    key: String,
 }
 
 #[derive(Serialize)]
@@ -64,9 +65,9 @@ pub struct SetIpnsResponse {
 
 pub async fn set_ipns(
     State(state): State<mpsc::UnboundedSender<Request>>,
-    Json(req): Json<SetIpns>,
+    Json(json_req): Json<SetIpns>,
 ) -> Result<(StatusCode, Json<SetIpnsResponse>), (StatusCode, String)> {
-    let Ok(cid) = Cid::try_from(req.cid) else {
+    let Ok(cid) = Cid::try_from(json_req.cid) else {
         return Err((StatusCode::BAD_REQUEST, "invalid cid".into()));
     };
 
@@ -95,6 +96,7 @@ pub async fn set_ipns(
     let (req, rx) = Request::new(RequestType::SetIpns {
         data: format!("/ipfs/{}", cid),
         seq: seq + 1,
+        key: json_req.key,
     });
 
     if state.send(req).is_err() {

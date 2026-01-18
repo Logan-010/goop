@@ -1,6 +1,9 @@
-use crate::swarm::{
-    Behaviour, State,
-    task::{Request, RequestType, Response},
+use crate::{
+    keystore::Keystore,
+    swarm::{
+        Behaviour, State,
+        task::{Request, RequestType, Response},
+    },
 };
 use blockstore::{Blockstore, RedbBlockstore};
 use chrono::Duration;
@@ -8,7 +11,6 @@ use cid::Cid;
 use color_eyre::eyre::ContextCompat;
 use libp2p::{
     Swarm,
-    identity::Keypair,
     kad::{self, Quorum},
 };
 use multihash::Multihash;
@@ -16,7 +18,7 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 pub async fn handle_request(
-    keypair: &Keypair,
+    keystore: &Keystore,
     request: Request,
     blockstore: &Arc<RedbBlockstore>,
     state: &mut State,
@@ -26,6 +28,11 @@ pub async fn handle_request(
     tracing::debug!("got request: {:?}", request);
 
     match request.message {
+        RequestType::GetKeys => {
+            let keys = keystore.get_keys()?;
+
+            request.send_response(Response::Keys(keys));
+        }
         RequestType::GetCid(cid) => {
             if blockstore.has(&cid).await? {
                 let content = blockstore
@@ -60,7 +67,9 @@ pub async fn handle_request(
                 state.add_ipns_query(query_id, request.response_channel);
             }
         }
-        RequestType::SetIpns { data, seq } => {
+        RequestType::SetIpns { data, seq, key } => {
+            let keypair = keystore.get_or_init_key(&key, None)?;
+
             let pk = keypair.public().encode_protobuf();
             let cid = Cid::new_v1(0x72, Multihash::<64>::wrap(0x00, &pk)?);
 
@@ -68,7 +77,7 @@ pub async fn handle_request(
             key.extend_from_slice(&cid.hash().to_bytes());
 
             let record =
-                rust_ipns::Record::new(keypair, data, Duration::hours(24), seq, 300_000_000_000)?
+                rust_ipns::Record::new(&keypair, data, Duration::hours(24), seq, 300_000_000_000)?
                     .encode()?;
 
             let query_id = swarm.behaviour_mut().kad.put_record(

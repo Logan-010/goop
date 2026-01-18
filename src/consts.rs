@@ -12,6 +12,8 @@ pub const BOOTNODES: [&str; 4] = [
 ];
 pub const BOOTSTRAP_ADDR: &str = "/dnsaddr/bootstrap.libp2p.io";
 
+pub const KEY_TABLE: TableDefinition<'static, &[u8], &[u8]> = TableDefinition::new("KEYSTORE.KEYS");
+
 pub const BLOCKS_TABLE: TableDefinition<'static, &[u8], &[u8]> =
     TableDefinition::new("BLOCKSTORE.BLOCKS");
 

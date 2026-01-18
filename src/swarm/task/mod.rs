@@ -4,7 +4,7 @@ mod requests;
 mod types;
 pub use types::*;
 
-use crate::{consts::CACHE_TABLE, swarm::init_swarm};
+use crate::{config::CONFIG, consts::CACHE_TABLE, keystore::Keystore, swarm::init_swarm};
 use libp2p::futures::StreamExt;
 use redb::{ReadableTable, TableError};
 use tokio::{select, sync::mpsc};
@@ -14,7 +14,9 @@ pub async fn spawn(
     cancel: CancellationToken,
     mut requests: mpsc::UnboundedReceiver<Request>,
 ) -> color_eyre::Result<()> {
-    let (keypair, blockstore, mut state, mut swarm) = init_swarm().await?;
+    let keystore = Keystore::open(&CONFIG.get().unwrap().keystore_path)?;
+
+    let (blockstore, mut state, mut swarm) = init_swarm(&keystore).await?;
 
     let mut cache_size = 0;
 
@@ -44,7 +46,7 @@ pub async fn spawn(
         select! {
             _ = cancel.cancelled() => break,
             req = requests.recv() => match req {
-                Some(request) => if let Err(e) = requests::handle_request(&keypair, request, &blockstore, &mut state, &mut swarm, &cancel).await {
+                Some(request) => if let Err(e) = requests::handle_request(&keystore, request, &blockstore, &mut state, &mut swarm, &cancel).await {
                     tracing::warn!("request error: {}", e);
                 },
                 None => {
