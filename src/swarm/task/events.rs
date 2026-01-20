@@ -214,7 +214,7 @@ pub async fn handle_event(
                         if let Some(cid) = state.remove_cid_query(&id)
                             && !state.is_getting_cid(cid)
                         {
-                            tracing::debug!("getting cid {}", cid);
+                            tracing::debug!("getting block {}", cid);
 
                             let b_id = swarm.behaviour_mut().bitswap.get(&cid);
 
@@ -251,12 +251,39 @@ pub async fn handle_event(
                         } else {
                             state.get_cid_for_id(&id)
                         }
+                        && !state.is_querying_for_block(cid)
                     {
+                        tracing::debug!("getting block {}", cid);
+
+                        let b_id = swarm.behaviour_mut().bitswap.get(&cid);
+
+                        state.add_block_query(b_id, cid);
+                    } else if swarm
+                        .behaviour()
+                        .mdns
+                        .discovered_nodes()
+                        .any(|p| *p == peer)
+                        && let Some(cid) = if step.last {
+                            state.remove_cid_query(&id)
+                        } else {
+                            state.get_cid_for_id(&id)
+                        }
+                        && !state.is_querying_for_block(cid)
+                    {
+                        swarm.dial(peer)?;
+
+                        tracing::debug!("getting block {}", cid);
+
                         let b_id = swarm.behaviour_mut().bitswap.get(&cid);
 
                         state.add_block_query(b_id, cid);
                     } else if !state.is_searching_for_peer(peer)
-                        && let Some(cid) = state.get_cid_for_id(&id)
+                        && let Some(cid) = if step.last {
+                            state.remove_cid_query(&id)
+                        } else {
+                            state.get_cid_for_id(&id)
+                        }
+                        && !state.is_querying_for_block(cid)
                     {
                         let q_id = swarm.behaviour_mut().kad.get_closest_peers(peer);
 

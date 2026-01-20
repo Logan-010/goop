@@ -14,8 +14,8 @@ pub struct Behaviour {
     relay: relay::client::Behaviour,
     autonat: autonat::v2::client::Behaviour,
     dcutr: dcutr::Behaviour,
-    mdns: mdns::tokio::Behaviour,
     upnp: upnp::tokio::Behaviour,
+    pub mdns: mdns::tokio::Behaviour,
     pub kad: kad::Behaviour<kad::store::MemoryStore>,
     pub bitswap: beetswap::Behaviour<HASH_SIZE, RedbBlockstore>,
 }

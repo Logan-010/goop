@@ -57,6 +57,10 @@ impl State {
         self.block_queries.insert(id, cid);
     }
 
+    pub fn is_querying_for_block(&self, cid: Cid) -> bool {
+        self.block_queries.values().any(|b| *b == cid)
+    }
+
     pub fn remove_block_query(&mut self, id: &beetswap::QueryId) -> Option<Cid> {
         self.block_queries.remove(id)
     }
