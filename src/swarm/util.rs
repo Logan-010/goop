@@ -6,13 +6,9 @@ use crate::{
 };
 use blockstore::RedbBlockstore;
 use cid::Cid;
-use libp2p::{
-    PeerId, Swarm, SwarmBuilder, Transport, core::muxing::StreamMuxerBox, kad, noise, tcp, yamux,
-};
-use libp2p_webrtc::{self as webrtc, tokio::Certificate};
-use redb::{ReadableTable, TableError};
+use libp2p::{PeerId, Swarm, SwarmBuilder, kad, noise, tcp, yamux};
+use redb::{Database, ReadableTable, TableError};
 use std::{sync::Arc, time::Duration};
-use tokio::fs;
 
 pub async fn init_swarm(
     keystore: &Keystore,
@@ -21,17 +17,15 @@ pub async fn init_swarm(
 
     let keypair = keystore.get_or_init_key("self", None)?;
 
-    let certificate = {
-        let content = fs::read_to_string(&config.webrtc_cert_path).await?;
-
-        Certificate::from_pem(&content)?
-    };
-
     tracing::info!("loaded identity {}", keypair.public().to_peer_id());
 
     let redb = RedbBlockstore::open(&config.blockstore_path).await?;
 
     tracing::info!("loaded blockstore");
+
+    let store = Database::create(&config.kadstore_path)?;
+
+    tracing::info!("loaded kad store");
 
     let blockstore = Arc::new(redb);
 
@@ -43,15 +37,11 @@ pub async fn init_swarm(
             yamux::Config::default,
         )?
         .with_quic()
-        .with_other_transport(|key| {
-            webrtc::tokio::Transport::new(key.clone(), certificate)
-                .map(|(peer_id, conn), _| (peer_id, StreamMuxerBox::new(conn)))
-        })?
         .with_dns()?
         .with_websocket(noise::Config::new, yamux::Config::default)
         .await?
         .with_relay_client(noise::Config::new, yamux::Config::default)?
-        .with_behaviour(|k, b| Ok(Behaviour::new(k, b, blockstore.clone())?))?
+        .with_behaviour(|k, b| Ok(Behaviour::new(k, b, blockstore.clone(), store)?))?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
 

@@ -5,6 +5,7 @@ use libp2p::{
     upnp,
 };
 use rand::rngs::OsRng;
+use redb::Database;
 use std::sync::Arc;
 
 #[derive(NetworkBehaviour)]
@@ -16,7 +17,7 @@ pub struct Behaviour {
     dcutr: dcutr::Behaviour,
     upnp: upnp::tokio::Behaviour,
     pub mdns: mdns::tokio::Behaviour,
-    pub kad: kad::Behaviour<kad::store::MemoryStore>,
+    pub kad: kad::Behaviour<kad_redb::RedbStore>,
     pub bitswap: beetswap::Behaviour<HASH_SIZE, RedbBlockstore>,
 }
 
@@ -25,6 +26,7 @@ impl Behaviour {
         key: &Keypair,
         relay: relay::client::Behaviour,
         blockstore: Arc<RedbBlockstore>,
+        kad_store: Database,
     ) -> color_eyre::Result<Self> {
         Ok(Self {
             ping: ping::Behaviour::new(ping::Config::new()),
@@ -42,7 +44,7 @@ impl Behaviour {
             upnp: upnp::tokio::Behaviour::default(),
             kad: kad::Behaviour::with_config(
                 key.public().to_peer_id(),
-                kad::store::MemoryStore::new(key.public().to_peer_id()),
+                kad_redb::RedbStore::new(key.public().to_peer_id(), kad_store),
                 kad::Config::new(KAD_PROTOCOL),
             ),
             bitswap: beetswap::Behaviour::new(blockstore),

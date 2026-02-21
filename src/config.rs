@@ -2,7 +2,6 @@ use crate::consts::{APPLICATION, ORGANIZATION, QUALIFIER};
 use color_eyre::eyre::ContextCompat;
 use directories::ProjectDirs;
 use libp2p::{Multiaddr, PeerId};
-use libp2p_webrtc::tokio::Certificate;
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf};
 use tokio::{fs, sync::OnceCell, task};
@@ -13,9 +12,9 @@ pub static CONFIG: OnceCell<Config> = OnceCell::const_new();
 pub struct Config {
     pub keystore_path: PathBuf,
     pub blockstore_path: PathBuf,
+    pub kadstore_path: PathBuf,
     pub api_address: SocketAddr,
     pub listen_addresses: Vec<Multiaddr>,
-    pub webrtc_cert_path: PathBuf,
     pub external_addresses: Vec<Multiaddr>,
     pub max_cache_size: usize,
     pub peers: Vec<PeerType>,
@@ -36,6 +35,7 @@ impl Default for Config {
         Self {
             keystore_path: base.join("keystore.redb"),
             blockstore_path: base.join("blockstore.redb"),
+            kadstore_path: base.join("kad.redb"),
             api_address: "127.0.0.1:5001".parse().unwrap(),
             listen_addresses: vec![
                 "/ip4/0.0.0.0/tcp/4001".parse().unwrap(),
@@ -44,14 +44,11 @@ impl Default for Config {
                 "/ip6/::/udp/4001/quic-v1".parse().unwrap(),
                 "/ip4/0.0.0.0/tcp/4002/ws".parse().unwrap(),
                 "/ip6/::/tcp/4002/ws".parse().unwrap(),
-                "/ip4/0.0.0.0/udp/4002/webrtc-direct".parse().unwrap(),
-                "/ip6/::/udp/4003/webrtc-direct".parse().unwrap(),
                 "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN/p2p-circuit".parse().unwrap(),
                 "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa/p2p-circuit".parse().unwrap(),
                 "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb/p2p-circuit".parse().unwrap(),
                 "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt/p2p-circuit".parse().unwrap(),
             ],
-            webrtc_cert_path: base.join("webrtc-cert.pem"),
             external_addresses: Vec::new(),
             // 10 GB
             max_cache_size: 10 * 1024 * 1024 * 1024,
@@ -88,14 +85,6 @@ impl Config {
 
             config
         };
-
-        if !config.webrtc_cert_path.exists() {
-            let cert = Certificate::generate(&mut rand::thread_rng())?;
-
-            let content = cert.serialize_pem();
-
-            fs::write(&config.webrtc_cert_path, content).await?;
-        }
 
         Ok(config)
     }

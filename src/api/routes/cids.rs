@@ -1,9 +1,8 @@
+use crate::swarm::{Request, RequestType, Response};
 use axum::{Json, extract::State, http::StatusCode};
 use cid::Cid;
 use serde::Deserialize;
 use tokio::sync::mpsc;
-
-use crate::swarm::{Request, RequestType, Response};
 
 #[derive(Deserialize)]
 pub struct GetCid {
