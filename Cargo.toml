@@ -1,71 +1,8 @@
-[package]
-name = "goop"
-version = "0.1.0"
-edition = "2024"
-authors = ["Logan-010"]
-description = "IPFS implementation in Rust."
+[workspace]
+resolver = "2"
+members = [ "kad-redb", "goop-cli" ]
 
-[dependencies]
-axum = { version = "0.8.8", features = ["http1", "tokio", "ws"] }
-beetswap = "0.5.0"
-blockstore = { version = "0.8.0", features = ["redb"] }
-bytes = "1.11.0"
-chrono = { version = "0.4.43", default-features = false }
-cid = "0.11.1"
-clap = { version = "4.5.54", features = ["derive", "env"] }
-color-eyre = "0.6.5"
-directories = "6.0.0"
-libp2p = { version = "0.56.0", features = [
-  "dcutr",
-  "relay",
-  "tcp",
-  "quic",
-  "noise",
-  "yamux",
-  "tokio",
-  "macros",
-  "ping",
-  "identify",
-  "mdns",
-  "autonat",
-  "kad",
-  "websocket",
-  "dns",
-  "serde",
-  "upnp",
-  "rsa",
-  "ecdsa",
-  "secp256k1",
-] }
-mime_guess = "2.0.5"
-multihash = "0.19.3"
-multihash-codetable = { version = "0.1.4", features = [
-  "sha1",
-  "sha2",
-  "sha3",
-  "blake3",
-  "blake2b",
-  "blake2s",
-  "ripemd",
-  "strobe",
-] }
-rand = "0.8.5"
-redb = "2.6.3"
-rust-embed = "8.11.0"
-rust-ipns = "0.7.0"
-serde = { version = "1.0.228", features = ["derive"] }
-tokio = { version = "1.49.0", features = [
-  "rt-multi-thread",
-  "macros",
-  "fs",
-  "signal",
-  "net",
-] }
-tokio-util = { version = "0.7.18", default-features = false }
-toml = "1.0.3"
-tower-http = { version = "0.6.8", features = ["compression-gzip", "trace"] }
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+[workspace.dependencies]
 kad-redb = { path = "kad-redb" }
 
 [profile.release]
