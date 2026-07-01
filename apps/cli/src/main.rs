@@ -1,16 +1,16 @@
 mod api;
+mod cli;
+mod config;
 mod consts;
 mod keystore;
 mod swarm;
 
-mod config;
-use config::{CONFIG, Config};
-
-mod cli;
-use cli::{Cli, Command};
-
 use clap::Parser;
-use tokio::{select, signal, sync::mpsc, task};
+use cli::{Cli, Command};
+use config::{CONFIG, Config};
+use redb::Database;
+use std::time::Duration;
+use tokio::{select, signal, sync::mpsc, task, time::sleep};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -29,11 +29,11 @@ async fn main() -> color_eyre::Result<()> {
         eprintln!("failed to initialize logger");
     }
 
-    let config = Config::new().await?;
-    CONFIG.set(config)?;
-
     match cli.cmd {
         Command::Daemon => {
+            let config = Config::new().await?;
+            CONFIG.set(config)?;
+
             let token = CancellationToken::new();
 
             let (tx, rx) = mpsc::unbounded_channel();
@@ -53,6 +53,20 @@ async fn main() -> color_eyre::Result<()> {
             tracing::info!("quitting, press ctrl+c again to exit immediately...");
 
             token.cancel();
+
+            // Wait for tasks to finish and close connection to database before trying to compact
+            sleep(Duration::from_millis(500)).await;
+
+            task::spawn_blocking(|| {
+                let cfg = CONFIG.get().expect("expected config");
+
+                while Database::open(&cfg.blockstore_path)?.compact()? {}
+                while Database::open(&cfg.kadstore_path)?.compact()? {}
+                while Database::open(&cfg.keystore_path)?.compact()? {}
+
+                Result::<(), color_eyre::Report>::Ok(())
+            })
+            .await??;
         }
     }
 
