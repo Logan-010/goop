@@ -1,9 +1,6 @@
-use crate::consts::{APPLICATION, ORGANIZATION, QUALIFIER};
-use color_eyre::eyre::ContextCompat;
-use directories::ProjectDirs;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, path::PathBuf};
+use std::{env, net::SocketAddr, path::PathBuf};
 use tokio::{fs, sync::OnceCell, task};
 
 pub static CONFIG: OnceCell<Config> = OnceCell::const_new();
@@ -28,9 +25,9 @@ pub enum PeerType {
 
 impl Default for Config {
     fn default() -> Self {
-        let dirs = ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
-            .expect("failed to access goop directories");
-        let base = dirs.data_dir().to_path_buf();
+        let base = env::home_dir()
+            .expect("Expected home directory")
+            .join(".goop");
 
         Self {
             keystore_path: base.join("keystore.redb"),
@@ -59,9 +56,9 @@ impl Default for Config {
 
 impl Config {
     pub async fn new() -> color_eyre::Result<Self> {
-        let dirs = ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
-            .context("failed to access goop directories")?;
-        let base = dirs.data_dir().to_path_buf();
+        let base = env::home_dir()
+            .expect("Expected home directory")
+            .join(".goop");
 
         let config_path = base.join("config.toml");
 
