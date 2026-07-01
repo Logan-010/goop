@@ -4,7 +4,7 @@ use libp2p::{
     autonat, dcutr, identify, identity::Keypair, kad, mdns, ping, relay, swarm::NetworkBehaviour,
     upnp,
 };
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use redb::Database;
 use std::sync::Arc;
 

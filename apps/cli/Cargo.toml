@@ -49,7 +49,7 @@ multihash-codetable = { version = "0.2.2", features = [
   "ripemd",
   "strobe",
 ] }
-rand = "0.8.6"
+rand_core = "0.6.4"
 redb = { workspace = true }
 rust-embed = "8.11.0"
 rust-ipns = "0.9.0"
