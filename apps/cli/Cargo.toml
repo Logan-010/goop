@@ -7,9 +7,9 @@ description = "IPFS implementation in Rust."
 
 [dependencies]
 axum = { version = "0.8.8", features = ["http1", "tokio", "ws"] }
-beetswap = "0.5.0"
+beetswap = { workspace = true }
 blockstore = { version = "0.8.0", features = ["redb"] }
-bytes = "1.11.0"
+bytes = "1.12.0"
 chrono = { version = "0.4.43", default-features = false }
 cid = "0.11.1"
 clap = { version = "4.5.54", features = ["derive", "env"] }
@@ -39,7 +39,7 @@ libp2p = { version = "0.56.0", features = [
 ] }
 mime_guess = "2.0.5"
 multihash = "0.19.3"
-multihash-codetable = { version = "0.1.4", features = [
+multihash-codetable = { version = "0.2.2", features = [
   "sha1",
   "sha2",
   "sha3",
@@ -49,10 +49,10 @@ multihash-codetable = { version = "0.1.4", features = [
   "ripemd",
   "strobe",
 ] }
-rand = "0.8.5"
-redb = "2.6.3"
+rand = "0.8.6"
+redb = { workspace = true }
 rust-embed = "8.11.0"
-rust-ipns = "0.7.0"
+rust-ipns = "0.9.0"
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.49.0", features = [
   "rt-multi-thread",
@@ -63,7 +63,7 @@ tokio = { version = "1.49.0", features = [
 ] }
 tokio-util = { version = "0.7.18", default-features = false }
 toml = "1.0.3"
-tower-http = { version = "0.6.8", features = ["compression-gzip", "trace"] }
+tower-http = { version = "0.7.0", features = ["compression-gzip", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 kad-redb = { workspace = true }

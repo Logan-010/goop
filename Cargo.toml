@@ -1,12 +1,13 @@
 [workspace]
-resolver = "2"
-members = [ "kad-redb", "goop-cli" ]
+resolver = "3"
+members = ["crates/kad-redb", "crates/beetswap", "apps/cli"]
 
 [workspace.dependencies]
-kad-redb = { path = "kad-redb" }
+kad-redb = { path = "crates/kad-redb" }
+beetswap = { path = "crates/beetswap" }
+redb = "2.6.3"
 
 [profile.release]
-opt-level = "z"
 lto = "fat"
 codegen-units = 1
 panic = "abort"
