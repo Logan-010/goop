@@ -45,7 +45,9 @@ impl Behaviour {
             kad: kad::Behaviour::with_config(
                 key.public().to_peer_id(),
                 kad_redb::RedbStore::new(key.public().to_peer_id(), kad_store),
-                kad::Config::new(KAD_PROTOCOL),
+                kad::Config::new(KAD_PROTOCOL)
+                    .set_record_filtering(kad::StoreInserts::FilterBoth)
+                    .clone(),
             ),
             bitswap: beetswap::Behaviour::new(blockstore),
         })

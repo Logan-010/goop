@@ -1,12 +1,19 @@
 use crate::{
     config::CONFIG,
     consts::CACHE_TABLE,
-    swarm::{Behaviour, BehaviourEvent, State, task::Response},
+    swarm::{Behaviour, BehaviourEvent, HASH_SIZE, State, task::Response},
 };
 use blockstore::{Blockstore, RedbBlockstore};
 use cid::Cid;
 use color_eyre::eyre::ContextCompat;
-use libp2p::{Swarm, identify, identity::PublicKey, kad, mdns, swarm::SwarmEvent, upnp};
+use libp2p::{
+    Swarm, identify,
+    identity::PublicKey,
+    kad::{self, store::RecordStore},
+    mdns,
+    swarm::SwarmEvent,
+    upnp,
+};
 use multihash::Multihash;
 use std::sync::Arc;
 use tokio::task;
@@ -73,6 +80,51 @@ pub async fn handle_event(
         SwarmEvent::Behaviour(BehaviourEvent::Upnp(ev)) => {
             tracing::warn!("upnp error: {:?}", ev);
         }
+        SwarmEvent::Behaviour(BehaviourEvent::Kad(kad::Event::InboundRequest { request })) => {
+            match request {
+                kad::InboundRequest::AddProvider {
+                    record: Some(provider_record),
+                } => {
+                    if Multihash::<{ HASH_SIZE }>::from_bytes(provider_record.key.as_ref()).is_ok()
+                        && let Err(e) = swarm
+                            .behaviour_mut()
+                            .kad
+                            .store_mut()
+                            .add_provider(provider_record)
+                    {
+                        tracing::warn!("Failed to add provider record to store: {}", e);
+                    }
+                }
+                kad::InboundRequest::PutRecord {
+                    record: Some(record),
+                    ..
+                } => {
+                    let Some(pk_bytes) = record.key.as_ref().strip_prefix(b"/ipns/") else {
+                        return Ok(());
+                    };
+
+                    let Ok(hash) = Multihash::<{ HASH_SIZE }>::from_bytes(pk_bytes) else {
+                        return Ok(());
+                    };
+
+                    let Ok(pk) = PublicKey::try_decode_protobuf(hash.digest()) else {
+                        return Ok(());
+                    };
+
+                    let id = pk.to_peer_id();
+
+                    if rust_ipns::Record::decode(&record.value)
+                        .ok()
+                        .map(|r| r.verify(id).is_ok())
+                        .unwrap_or(false)
+                        && let Err(e) = swarm.behaviour_mut().kad.store_mut().put(record)
+                    {
+                        tracing::warn!("Failed to add record to store: {}", e);
+                    }
+                }
+                rq => tracing::trace!("Inbound Kad request: {:?}", rq),
+            }
+        }
         SwarmEvent::Behaviour(BehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
             id,
             result,
@@ -130,9 +182,11 @@ pub async fn handle_event(
                 if let Some(response_channel) = state.remove_ipns_query(&id) {
                     let ipns_record = rust_ipns::Record::decode(record.value)?;
 
-                    let key = record.key.to_vec();
-
-                    let mh_bytes = key.strip_prefix(b"/ipns/").context("invalid record key")?;
+                    let mh_bytes = record
+                        .key
+                        .as_ref()
+                        .strip_prefix(b"/ipns/")
+                        .context("invalid record key")?;
 
                     let Ok(mh) = Multihash::<64>::from_bytes(mh_bytes) else {
                         if response_channel
