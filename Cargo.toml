@@ -1,9 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["crates/kad-redb", "apps/cli"]
+members = ["kad-redb", "goop"]
 
 [workspace.dependencies]
-kad-redb = { path = "crates/kad-redb" }
+kad-redb = { path = "kad-redb" }
 redb = "2.6.3"
 
 [profile.release]
