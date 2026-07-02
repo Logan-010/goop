@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["kad-redb", "goop"]
+members = ["kad-redb", "app"]
 
 [workspace.dependencies]
 kad-redb = { path = "kad-redb" }
