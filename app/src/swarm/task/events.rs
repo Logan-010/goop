@@ -367,7 +367,14 @@ pub async fn handle_event(
             if let Some(cid) = state.remove_block_query(&query_id) {
                 tracing::debug!("got data for cid {}", cid);
 
-                if state.cache_size + data.len() < CONFIG.get().unwrap().max_cache_size
+                if state.cache_size + data.len()
+                    < CONFIG
+                        .get()
+                        .unwrap()
+                        .limits
+                        .as_ref()
+                        .and_then(|l| l.max_cache_size)
+                        .unwrap_or(usize::MAX)
                     && !blockstore.has(&cid).await?
                 {
                     blockstore.put_keyed(&cid, &data).await?;

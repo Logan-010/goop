@@ -1,8 +1,10 @@
+use crate::config::CONFIG;
+
 use super::{CLIENT_NAME, HASH_SIZE, KAD_PROTOCOL};
 use blockstore::RedbBlockstore;
 use libp2p::{
-    autonat, dcutr, identify, identity::Keypair, kad, mdns, ping, relay, swarm::NetworkBehaviour,
-    upnp,
+    autonat, connection_limits, dcutr, identify, identity::Keypair, kad, mdns, ping, relay,
+    swarm::NetworkBehaviour, upnp,
 };
 use rand_core::OsRng;
 use redb::Database;
@@ -16,6 +18,7 @@ pub struct Behaviour {
     autonat: autonat::v2::client::Behaviour,
     dcutr: dcutr::Behaviour,
     upnp: upnp::tokio::Behaviour,
+    limits: connection_limits::Behaviour,
     pub mdns: mdns::tokio::Behaviour,
     pub kad: kad::Behaviour<kad_redb::RedbStore>,
     pub bitswap: beetswap::Behaviour<HASH_SIZE, RedbBlockstore>,
@@ -40,6 +43,15 @@ impl Behaviour {
                 autonat::v2::client::Config::default(),
             ),
             dcutr: dcutr::Behaviour::new(key.public().to_peer_id()),
+            limits: connection_limits::Behaviour::new(
+                CONFIG
+                    .get()
+                    .unwrap()
+                    .limits
+                    .as_ref()
+                    .map(|l| l.connection_limits())
+                    .unwrap_or_default(),
+            ),
             mdns: mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id())?,
             upnp: upnp::tokio::Behaviour::default(),
             kad: kad::Behaviour::with_config(
